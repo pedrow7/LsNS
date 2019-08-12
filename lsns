@@ -1,0 +1,472 @@
+def modalAnalysis():
+    plt.rc('text', usetex=True)
+    plt.rc('font', family='serif')
+###########################################################################
+# Entrada de dados                                                        #
+###########################################################################
+    alpha = 0.
+    beta = 0.
+
+    N = 101
+    Nalf = 100
+    Nalf2 = 5
+    alf = np.linspace(0.001,.1,Nalf)
+    alf2 = np.linspace(0.105,0.6,Nalf2)
+    rir = np.linspace(0.,1.,N)
+    tet = np.linspace(0.,0.05,N)
+    x = 0
+    k = 0
+    l = 0
+    
+    n = 128
+    xMax = 80.
+    
+    Re = 1.e4
+    Ri = 0.
+    Sc = 1.
+    us = 0.0
+
+    arq = open('dados_Re1e4_n128_N101_alpha001ate6(100+5)_ri0ate1_theta0ate05(NOVO).txt','w')
+    
+    while l < N:
+        k = 0
+        theta = tet[l]
+        while k < N:
+            i = 0
+            z = 0
+            Ri = rir[k]
+            gRate = np.zeros(Nalf+Nalf2)
+            aufa = np.zeros(Nalf+Nalf2)
+            a = Ri*mt.sin(theta)
+            while(i<Nalf+Nalf2):
+                if(i<Nalf):
+                    alpha = alf[i]
+                else:
+                    z = i - Nalf
+                    alpha = alf2[z]
+###########################################################################
+# Discretização espacial.                                                 #
+###########################################################################
+                D, xHat = derivChebyshev(n,4)
+                w = intChebyshev(n)
+                y, D1, D2, D4, W = gridMap(n, D, w, xHat, xMax, xMax, 0.)
+        
+###########################################################################
+# Escoamento de base #Modificado                                          #
+###########################################################################
+                deltaU = 1.
+                u0 = -1.
+                phi0 = -1.
+                deltaPhi = 1.
+                R = deltaU/deltaPhi
+                d1phiBar = phi0*R*(sech(R*y)**2.)
+                uBar = a + u0*np.tanh(y)
+                d1uBar = u0*(sech(y)**2.)
+                d2uBar = -2.*u0*np.tanh(y)*(sech(y)**2.)
+                
+###########################################################################
+# Escoamento de base #original                                            #
+###########################################################################
+                #deltaU = 1.
+                #u0 = -1.
+                #phi0 = -1.
+                #deltaPhi = 1.
+                #d1phiBar = (phi0 / deltaPhi) * (sech(y / deltaPhi)**2.)
+                #uBar = u0 * np.tanh(y / deltaU)
+                #d1uBar = (u0 / deltaU) * (sech(y / deltaU)**2.)
+                #d2uBar = -(2. * u0 / (deltaU**2.)) * np.tanh(y / deltaU) * (sech(y / deltaU)**2.)
+
+###########################################################################
+# Resolução do problema de autovalores                                    #
+###########################################################################        
+                angFreq, growthRate, eigVec , L_filt = LSTeig(n, D1, D2, D4, uBar, d1uBar, d2uBar, d1phiBar, alpha, beta, Re, Ri, Sc, us, theta, a)
+                gRate[i] = growthRate
+                aufa[i] = alpha
+        
+###########################################################################
+# Autofunções                                                             #
+###########################################################################               
+                u2Hat = eigVec[0:n]
+                eta2Hat = eigVec[n:2*n]
+                phiHat = eigVec[2*n:3*n]
+            
+                #u1Hat, u3Hat, eta1Hat, eta3Hat = transferFunc(u2Hat, eta2Hat, alpha, beta, D1)
+                i += 1
+ 
+###########################################################################
+# Plots e Arquivos de Dados                                               #
+###########################################################################     
+
+            x = np.argmax(gRate)
+            
+            arq.write(str(aufa[x]))
+            arq.write(" ")
+            arq.write(str(rir[k]))
+            arq.write(" ")
+            arq.write(str(tet[l]))
+            arq.write(" ")
+            arq.write(str(gRate[x]))
+            arq.write("\n")
+
+            k += 1
+
+        l += 1
+        
+    arq.close()
+    
+###############################################################################    
+def sech(X):
+###############################################################################
+# Secante hiperbólica                                                         #
+###############################################################################  
+    return (1/np.cosh(X))
+
+###########################################################################
+def derivChebyshev(n, m):
+###########################################################################
+# Funcao para montar as matrizes de derivacao com o metodo de chebyshev   #
+# utilizando a colocacao de chebyshev-gauss-lobato com "n" pontos e com   #
+# ordem de derivacao de 1 ate "m". A matriz resultante D e uma matriz     #
+# n x n x m.                                                              #
+###########################################################################
+    D = np.zeros(n*n*m)
+    D = D.reshape((n,n,m))
+    
+    I = np.eye(n)
+    
+    n1 = mt.floor(n/2)
+    n2 = mt.ceil(n/2)
+    
+    k1 = np.linspace(0, n-1, n, endpoint = True)
+    k2 = np.linspace(n-1, 1-n, n, endpoint = True)
+    
+    
+    th1 = k1 * np.pi / (n - 1)
+    th1 = th1[::-1]
+    
+    th1 = th1.reshape((n, 1))
+    
+    th2 = np.pi*k2/(2. * (n-1))
+    th2 = th2[::-1]
+    
+    x = np.sin(th2)
+    
+    T = np.tile(th1/2., (1,n))
+    DX = 2. * np.sin(T.T + T) * np.sin(T.T - T)
+    DX1 = DX[0:n1,:]
+    
+    DX2 = DX[0:n2,:]
+    DX2 = -DX2[:,::-1]
+    DX2 = DX2[::-1,:]
+    
+    DX = np.bmat([[DX1], [DX2]])
+    DX = np.squeeze(np.asarray(DX))
+    np.fill_diagonal(DX, 1.)
+    
+    Z = 1./DX
+    np.fill_diagonal(Z, 0.)
+    
+    C = sp.linalg.toeplitz((-1.)**k1)
+    C[0, :] = C[0, :]*2.
+    C[-1, :] = C[-1, :]*2.
+    C[:, 0] = C[:, 0]/2.
+    C[:, -1] = C[:, -1]/2.
+    
+    DM = np.eye(n)
+    
+    for jj in range(0,m):
+        DMdiag = (np.diag(DM)).reshape((n, 1))
+        DM = (jj + 1.) * Z * (C * np.tile(DMdiag, (1,n)) - DM)
+        np.fill_diagonal(DM, -np.sum(DM, axis = 1))
+        D[:, :, jj] = DM
+
+    return D, x
+###########################################################################
+
+###########################################################################
+def intChebyshev(n):
+###########################################################################
+# Trefethen "Spectral methods in MatLab" chapter 12
+# CLENCURT  nodes x (Chebyshev points) and weights w for Clenshaw-Curtis 
+# quadrature
+###########################################################################
+    N = n-1
+    th = np.pi * np.linspace(0, N, n, endpoint = True, dtype = int)/(N)
+    w = np.zeros(n)
+    ii = np.linspace(1, N-1, N-1, endpoint = True, dtype = int)
+    v = np.ones(N-1)
+    if (N % 2) == 0:
+        w[0] = 1. / (N**2. - 1.)
+        w[-1] = w[0]
+        for jj in np.arange(1, N/2 - 1 + 0.5, dtype = int):
+            v -= 2. * np.cos(2. * jj * th[ii]) / (4. * (jj**2.) - 1.)
+    else:
+        w[0] = 1. / N**2.
+        w[-1] = w[0]
+        for jj in np.arange(1, (N-1) / 2 + 0.5, dtype = int):
+            v -= 2. * np.cos(2. * jj * th[ii]) / (4. * (jj**2.) - 1.)
+    
+    w[ii] = 2. * v / N
+    return w
+###########################################################################
+
+###############################################################################
+def opLOS(n, D1, D2, D4, uBar, d1uBar, d2uBar, d1phiBar, alpha, beta, Re, Ri, Sc, us, theta):
+###############################################################################
+# Operador de estabilidade linear                                             #
+###############################################################################
+    # operadores auxiliares
+    I = np.eye(n)
+    O = np.zeros((n,n))
+    K2 = alpha**2. + beta**2.
+    L = D2 - I*K2
+    L2 = D4 - 2.*K2*D2 + I*(K2**2.)
+    # montagem dos blocos
+    # eq de u_2
+    Los11 = -1.j*alpha*np.diag(uBar).dot(L) + 1.j*alpha*np.diag(d2uBar) + L2/Re
+    Los13 = K2*Ri*np.cos(theta)*I - 1.j*alpha*Ri*np.sin(theta)*D1
+    Ros11 = -1.j*L
+    # eq de omega_2
+    Los21 = -1.j*beta*np.diag(d1uBar)
+    Los22 = -1.j*alpha*np.diag(uBar) + L/Re
+    Los23 = 1.j*beta*Ri*np.sin(theta)*I
+    Ros22 = -1.j*I
+    #eq de phi
+    Los31 = -np.diag(d1phiBar)
+    Los33 = -1.j*alpha*np.diag(uBar) + L/(Re*Sc) + us*D1
+    Ros33 = -1.j*I
+    
+   ## aplicar condições de contorno (modificadas):
+
+    ## u_2(0) = 0
+    #Los11[0,:] = np.zeros(n)
+    #Los11[0,0] = 1.
+    #Los13[0,:] = np.zeros(n)
+    #Ros11[0,:] = np.zeros(n)
+    ## u_2'(0) = 0
+    #Los11[0,:] = D1[0,:]
+    #Los13[0,:] = np.zeros(n)
+    #Ros11[0,:] = np.zeros(n)
+
+    ## u_2(L) = 0 (?)
+    #Los11[-1,:] = np.zeros(n)
+    #Los11[-1,-1] = 1.
+    #Los13[-1,:] = np.zeros(n)
+    #Ros11[-1,:] = np.zeros(n)
+    ## u_2'(L) = 0 (?)
+    #Los11[-1,:] = D1[-1,:]
+    #Los13[-1,:] = np.zeros(n)
+    #Ros11[-1,:] = np.zeros(n)
+    
+    # omega_2(0) = 0         
+    #Los21[0,:] = np.zeros(n)
+    #Los22[0,:] = np.zeros(n)
+    #Los22[0,0] = 1.
+    #Los23[0,:] = np.zeros(n) 
+    #Ros22[0,:] = np.zeros(n)
+    
+    # omega_2(L) = 0
+    #Los21[-1,:] = np.zeros(n)  
+    #Los22[-1,:] = np.zeros(n)
+    #Los22[-1,-1] = 1.               
+    #Los23[-1,:] = np.zeros(n) 
+    #Ros22[-1,:] = np.zeros(n)
+
+    # phi(0) = 0
+    #Los31[0,:] = np.zeros(n)
+    #Los33[0,:] = np.zeros(n)
+    #Los33[0,0] = 1.
+    #Ros33[0,:] = np.zeros(n)
+    
+    # phi(L) = 0
+    #Los31[-1,:] = np.zeros(n)
+    #Los33[-1,:] = np.zeros(n)
+    #Los33[-1,-1] = 1.
+    #Ros33[-1,:] = np.zeros(n)
+
+
+     # aplicar condições de contorno: ##Condiçoes de contorno originais plano sem inclinaçao
+     
+    # u_2(0) = 0
+    Los11[0,:] = np.zeros(n)
+    Los11[0,0] = 1.
+    Los13[0,:] = np.zeros(n)
+    Ros11[0,:] = np.zeros(n)
+
+    # u_2'(0) = 0
+    Los11[1,:] = D1[0,:]
+    Los13[1,:] = np.zeros(n)
+    Ros11[1,:] = np.zeros(n)
+
+    # u_2'(L) + k u_2(L) = 0
+    Los11[-2,:] = D1[-1,:]
+    Ros11[-2,:] = np.zeros(n)
+    # u_2'(L) + k u_2(L) = 0
+    Los11[-1,:] = np.zeros(n)
+    Los11[-1,-1] = 1.
+    Los13[-1,:] = np.zeros(n)
+    Ros11[-1,:] = np.zeros(n)
+
+    # omega_2(0) = 0
+    Los21[0,:] = np.zeros(n)
+    Los22[0,:] = np.zeros(n)
+    Los23[0,:] = np.zeros(n)
+    Los22[0,0] = 1.
+    Ros22[0,:] = np.zeros(n)
+
+    # omega_2(L) = 0
+    Los21[-1,:] = np.zeros(n) 
+    Los22[-1,:] = np.zeros(n)
+    Los23[-1,:] = np.zeros(n)
+    Los22[-1,-1] = 1.
+    Ros22[-1,:] = np.zeros(n)
+
+    # phi(0) = 0
+    Los31[0,:] = np.zeros(n)
+    Los33[0,:] = np.zeros(n)
+    Los33[0,0] = 1.
+    Ros33[0,:] = np.zeros(n)
+
+    # phi(L) = 0
+    Los31[-1,:] = np.zeros(n)
+    Los33[-1,:] = np.zeros(n)
+    Los33[-1,-1] = 1.
+    Ros33[-1,:] = np.zeros(n)
+    
+    Los = np.bmat([[Los11, O, Los13], [Los21, Los22, Los23], [Los31, O, Los33]])
+    Ros = np.bmat([[Ros11, O, O], [O, Ros22, O], [O, O, Ros33]])
+    
+    return Los, Ros
+###############################################################################
+
+###############################################################################    
+def LSTeig(n, D1, D2, D4, uBar, d1uBar, d2uBar, d1phiBar, alpha, beta, Re, Ri, Sc, us, theta, a):
+###############################################################################
+    Los, Ros = opLOS(n, D1, D2, D4, uBar, d1uBar, d2uBar, d1phiBar, alpha, beta, Re, Ri, Sc, us, theta)
+    L, V = sp.linalg.eig(Los, Ros)
+    k = np.sqrt(alpha**2.+beta**2.)
+    
+    # filtrar modos expurios
+    # parte real
+    # limite superior
+    iFilt = np.where(L.real/k <= np.max(np.absolute(uBar)))
+    iFilt = np.squeeze(np.asarray(iFilt))
+    L_filt = L[iFilt]
+    V_filt = V[:, iFilt]
+    # limite inferior
+    iFilt = np.where(L_filt.real/k >= -np.max(np.absolute(uBar)))
+    iFilt = np.squeeze(np.asarray(iFilt))
+    L_filt = L_filt[iFilt]
+    V_filt = V_filt[:, iFilt]
+    # parte imaginaria
+    # limite superior
+    iFilt = np.where(np.absolute(L_filt) < 1.e0) #np.where(L_filt.imag <= 1.e0)
+    iFilt = np.squeeze(np.asarray(iFilt))
+    L_filt = L_filt[iFilt]
+    V_filt = V_filt[:, iFilt]
+   
+    if L_filt.shape[-1] == 0:#len(L_filt) == 0:
+        angFreq = 0.
+        angFreq = angFreq - a*alpha
+        growthRate = 0.
+        eigVec = np.zeros(3 * n)
+        
+    else:
+        iMax = np.argmax(L_filt.imag)
+        angFreq = L_filt[iMax].real
+        angFreq = angFreq - a*alpha
+        growthRate = L_filt[iMax].imag
+        eigVec = V_filt[:, iMax]
+        
+    return angFreq, growthRate, eigVec , L_filt
+##############################################################################
+
+###########################################################################
+def gridMap(n, D, w, xHat, xMax, zeta, H):
+###########################################################################
+# Refinar o ponto x=0 e x=-H em um dominio [-L,L] (camada de mistura)     #
+###########################################################################
+    k1 = zeta/xMax
+    k2 = -H
+    
+    eta1 = (np.arctan(k1 * (xMax + k2)) - np.arctan(k1 * (xMax - k2))) / (2.*np.arctan(k1 * xMax) + np.arctan(k1 * (xMax + k2)) + np.arctan(k1 * (xMax - k2)))
+    eta2 = (2.*np.arctan(k1 * xMax) + np.arctan(k1 * (xMax + k2)) + np.arctan(k1 * (xMax - k2))) / 2.
+    
+    x = np.zeros(n)
+    
+    for ii in range(0,n):
+        A = (k1**2.) * np.tan(eta2 * (xHat[ii] - eta1))
+        B = 2. * k1 - A * k2
+        C = -np.tan(eta2 * (xHat[ii] - eta1)) - k1 * k2
+        xPlus = (-B + np.sqrt(B**2. - 4. * A * C)) / (2. * A)
+        xMinus = (-B - np.sqrt(B**2. - 4. * A * C)) / (2. * A)
+        if (xHat[ii] < 0.):
+            x[ii] = np.min([xPlus, xMinus])
+        else:
+            x[ii] = np.max([xPlus, xMinus])
+            
+    k3 = (k1**2.)*(x**2.) + 1.
+    k4 = (k1**2.)*((x - k2)**2.) + 1.
+    
+    d1xHat = k1*(1. / k3 + 1. / k4) / eta2
+    d2xHat = -2.*(k1**3.) * (x / (k3**2.) +  \
+             (x - k2) / (k4**2.)) / eta2
+    d3xHat = 2. * (k1**3.) * (4. * (k3 - 1.) / (k3**3.) - \
+             1. / (k3**2.) + 4. * (k4 - 1.) / (k4**3.) - \
+             1. / (k4**2.)) / eta2
+    d4xHat = -24. * (k1**5.) * (2. * (k1**2.) * (x**3.) / (k3**4.) - \
+             x / (k3**3.) + 2. * (k1**2.) * ((x - k2)**3.) / (k4**4.) - \
+             (x - k2) / (k4**3.)) / eta2
+    
+    # matrizes de derivacao
+    W = np.diag(1./d1xHat).dot(w)
+    D1 = (np.diag(d1xHat)).dot(D[:,:,0])
+    D2 = (np.diag(d1xHat**2.)).dot(D[:,:,1]) + (np.diag(d2xHat)).dot(D[:,:,0])
+    D4 = (np.diag(d1xHat**4.)).dot(D[:,:,3]) + \
+         6.*(np.diag(d2xHat*(d1xHat**2.))).dot(D[:,:,2]) + \
+         (np.diag(3.*(d2xHat**2.)+4.*d3xHat*d1xHat)).dot(D[:,:,1]) + \
+         (np.diag(d4xHat)).dot(D[:,:,0]);
+            
+    return x, D1, D2, D4, W
+
+###############################################################################    
+def transferFunc(u2Hat, w2Hat, alpha, beta, D1):
+###############################################################################    
+    n = len(u2Hat)
+    k2 = alpha**2. + beta**2.
+    I = np.eye(n)
+    O = np.zeros((n, n))
+    tMatrix = np.bmat([[(1.j * alpha / k2) * D1, (-1.j * beta / k2) * I], \
+                       [I, O], \
+                       [(1.j * beta/k2) * D1, (1.j * alpha/k2) * I]])
+    tMatrix = np.asarray(tMatrix)
+    U = tMatrix.dot(np.hstack((u2Hat, w2Hat)))
+    u1Hat = U[0:n]
+    u3Hat = U[2*n:3*n]
+    
+    w1Hat = D1.dot(u3Hat) - 1.j * beta * u2Hat
+    w3Hat = 1.j * alpha * u2Hat - D1.dot(u1Hat)
+
+    return u1Hat, u3Hat, w1Hat, w3Hat
+    
+###############################################################################
+
+###############################################################################
+if __name__ == "__main__":
+###############################################################################
+# Executar programa principal...                                              #
+###############################################################################
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import scipy as sp
+    import math as mt
+    import os
+    import time
+    from scipy import interpolate
+    from matplotlib import ticker
+    from matplotlib.colors import BoundaryNorm
+    from scipy.integrate import ode
+    from scipy.integrate import simps
+    
+    modalAnalysis()
+###############################################################################
