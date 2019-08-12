@@ -6,17 +6,19 @@ def modalAnalysis():
 ###########################################################################
     alpha = 0.
     beta = 0.
+       
+    theta_max = 0.1
 
     N = 101
     Nalf = 100
-    Nalf2 = 5
+    Nalf2 = 100
     alf = np.linspace(0.001,.1,Nalf)
     alf2 = np.linspace(0.105,0.6,Nalf2)
     rir = np.linspace(0.,1.,N)
-    tet = np.linspace(0.,0.05,N)
-    x = 0
+    tet = np.linspace(0.,theta_max,N)
     k = 0
     l = 0
+    x = 0
     
     n = 128
     xMax = 80.
@@ -26,7 +28,7 @@ def modalAnalysis():
     Sc = 1.
     us = 0.0
 
-    arq = open('dados_Re1e4_n128_N101_alpha001ate6(100+5)_ri0ate1_theta0ate05(NOVO).txt','w')
+    arq = open('dados.txt','w')
     
     while l < N:
         k = 0
